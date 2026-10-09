@@ -20,4 +20,166 @@
   </header>
 
   <main class="max-w-5xl mx-auto p-6">
-    <!-- Student Form
+    <!-- Student Form -->
+    <div id="studentView" class="max-w-xl mx-auto bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+      <h2 class="text-lg font-semibold mb-4">File a Grievance</h2>
+      <form id="grievanceForm" onsubmit="submitForm(event)" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Full Name</label>
+          <input required id="nameInput" class="w-full mt-1 border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="John Doe">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Campus Email</label>
+          <input required id="emailInput" type="email" class="w-full mt-1 border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="student@campus.edu">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Complaint Details</label>
+          <textarea required id="complaintInput" rows="4" class="w-full mt-1 border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="Describe the issue..."></textarea>
+        </div>
+        <button id="submitBtn" type="submit" class="w-full bg-indigo-600 text-white py-2 rounded font-medium hover:bg-indigo-700">Submit Ticket</button>
+      </form>
+
+      <!-- Feedback Card -->
+      <div id="ackCard" class="hidden mt-6 p-4 bg-emerald-50 border border-emerald-300 rounded-lg">
+        <div class="flex items-center justify-between mb-2">
+          <span id="ackId" class="font-bold text-emerald-800 text-sm"></span>
+          <span id="ackPriority" class="px-2 py-0.5 rounded text-xs font-bold"></span>
+        </div>
+        <p id="ackMessage" class="text-sm text-slate-800 mb-2"></p>
+        <p id="ackRouting" class="text-xs text-slate-500"></p>
+      </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="adminView" class="hidden">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-xl font-bold">Department Resolution Dashboard</h2>
+        <select id="deptFilter" onchange="renderTickets()" class="border border-slate-300 rounded p-1.5 text-sm">
+          <option value="All">All Departments</option>
+          <option value="Estate Maintenance">Estate Maintenance</option>
+          <option value="Warden Office">Warden Office</option>
+          <option value="Dean Academic">Dean Academic</option>
+        </select>
+      </div>
+      <div id="ticketsList" class="grid gap-4"></div>
+    </div>
+  </main>
+
+  <script>
+    let tickets = [];
+
+    function showTab(tab) {
+      if (tab === 'student') {
+        document.getElementById('studentView').classList.remove('hidden');
+        document.getElementById('adminView').classList.add('hidden');
+        document.getElementById('tabBtnStudent').className = "px-3 py-1 rounded text-sm font-medium bg-indigo-600 text-white";
+        document.getElementById('tabBtnAdmin').className = "px-3 py-1 rounded text-sm font-medium bg-indigo-800 text-indigo-200";
+      } else {
+        document.getElementById('studentView').classList.add('hidden');
+        document.getElementById('adminView').classList.remove('hidden');
+        document.getElementById('tabBtnAdmin').className = "px-3 py-1 rounded text-sm font-medium bg-indigo-600 text-white";
+        document.getElementById('tabBtnStudent').className = "px-3 py-1 rounded text-sm font-medium bg-indigo-800 text-indigo-200";
+        fetchTickets();
+      }
+    }
+
+    async function fetchTickets() {
+      try {
+        const res = await fetch('/api/complaints');
+        tickets = await res.json();
+        renderTickets();
+      } catch (err) {
+        console.error('Fetch error:', err);
+      }
+    }
+
+    async function submitForm(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      btn.innerText = "Classifying & Routing...";
+      btn.disabled = true;
+
+      const payload = {
+        student_name: document.getElementById('nameInput').value,
+        student_email: document.getElementById('emailInput').value,
+        complaint_text: document.getElementById('complaintInput').value
+      };
+
+      try {
+        const res = await fetch('/api/complaints', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const ticket = await res.json();
+
+        const ackCard = document.getElementById('ackCard');
+        const ackPriority = document.getElementById('ackPriority');
+        ackCard.classList.remove('hidden');
+        document.getElementById('ackId').innerText = `Ticket ${ticket.id} Created`;
+        document.getElementById('ackMessage').innerText = ticket.acknowledgement;
+        document.getElementById('ackRouting').innerHTML = `<strong>Routed To:</strong> ${ticket.department} (${ticket.category})`;
+
+        ackPriority.innerText = ticket.priority;
+        ackPriority.className = ticket.priority === 'Urgent' 
+          ? 'px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700' 
+          : 'px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-700';
+
+        document.getElementById('complaintInput').value = '';
+      } catch (err) {
+        alert('Failed to submit ticket');
+      } finally {
+        btn.innerText = "Submit Ticket";
+        btn.disabled = false;
+      }
+    }
+
+    async function updateStatus(id, newStatus) {
+      await fetch(`/api/complaints/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      fetchTickets();
+    }
+
+    function renderTickets() {
+      const container = document.getElementById('ticketsList');
+      const filter = document.getElementById('deptFilter').value;
+      const list = filter === 'All' ? tickets : tickets.filter(t => t.department === filter);
+
+      if (list.length === 0) {
+        container.innerHTML = `<p class="text-center text-slate-400 py-8 text-sm">No grievances in this view.</p>`;
+        return;
+      }
+
+      container.innerHTML = list.map(t => `
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+          <div class="flex justify-between items-start mb-2">
+            <div>
+              <span class="font-bold text-slate-800 mr-2">${t.id}</span>
+              <span class="text-xs bg-slate-100 border px-2 py-0.5 rounded text-slate-600">${t.category}</span>
+              <span class="text-xs ml-2 text-indigo-600 font-semibold">${t.department}</span>
+            </div>
+            <span class="text-xs px-2 py-0.5 rounded font-bold ${t.priority === 'Urgent' ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-700'}">
+              ${t.priority}
+            </span>
+          </div>
+          <p class="text-sm text-slate-700 my-2">${t.complaint_text}</p>
+          <div class="flex justify-between items-center text-xs text-slate-500 pt-2 border-t">
+            <span>Submitted by: ${t.student_name} (${t.student_email})</span>
+            <div class="flex items-center gap-2">
+              <span>Status:</span>
+              <select onchange="updateStatus('${t.id}', this.value)" class="border border-slate-300 rounded px-1.5 py-0.5 text-xs font-medium">
+                <option value="Open" ${t.status === 'Open' ? 'selected' : ''}>Open</option>
+                <option value="In Progress" ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                <option value="Resolved" ${t.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+  </script>
+</body>
+</html>
